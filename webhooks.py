@@ -16,8 +16,7 @@
 # under the License.
 
 import logging
-from sys import stderr, hexversion
-logging.basicConfig(stream=stderr)
+from sys import stdout, hexversion
 
 import hmac
 from hashlib import sha1
@@ -32,15 +31,14 @@ from ipaddress import ip_address, ip_network
 from flask import Flask, request, abort
 
 
-application = Flask(__name__)
+app = Flask(__name__)
 
 
-@application.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST'])
 def index():
     """
     Main WSGI application entry.
     """
-
     path = normpath(abspath(dirname(__file__)))
 
     # Only POST is implemented
@@ -138,7 +136,7 @@ def index():
         'branch': branch,
         'event': event
     }
-    logging.info('Metadata:\n{}'.format(dumps(meta)))
+    app.logger.info('Metadata: {}'.format(dumps(meta)))
 
     # Possible hooks
     scripts = []
@@ -152,6 +150,7 @@ def index():
     # Check permissions
     scripts = [s for s in scripts if isfile(s) and access(s, X_OK)]
     if not scripts:
+        app.logger.error("No scripts to run.")
         return ''
 
     # Save payload to temporal file
@@ -177,7 +176,7 @@ def index():
 
         # Log errors if a hook failed
         if proc.returncode != 0:
-            logging.error('{} : {} \n{}'.format(
+            app.logger.error('{} : {} \n{}'.format(
                 s, proc.returncode, stderr
             ))
 
@@ -189,9 +188,16 @@ def index():
         return ''
 
     output = dumps(ran, sort_keys=True, indent=4)
-    logging.info(output)
+    app.logger.info(output)
     return output
 
 
 if __name__ == '__main__':
-    application.run(debug=True, host='0.0.0.0')
+    handler = logging.StreamHandler(stdout)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    # handler.setLevel(logging.INFO)
+    app.logger.addHandler(handler)
+    app.logger.setLevel(logging.INFO)
+
+    app.run(debug=False, host='0.0.0.0')
