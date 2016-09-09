@@ -21,9 +21,9 @@ from sys import stdout, hexversion
 import hmac
 from hashlib import sha1
 from json import loads, dumps
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, TimeoutExpired
 from tempfile import mkstemp
-from os import access, X_OK, remove, fdopen
+from os import access, X_OK, remove, fdopen, getenv
 from os.path import isfile, abspath, normpath, dirname, join, basename
 
 import requests
@@ -158,28 +158,38 @@ def index():
     with fdopen(osfd, 'w') as pf:
         pf.write(dumps(payload))
 
+    # If the process does not terminate after timeout seconds,
+    # an empty response will be sent without output, while the
+    # script finishes in the background.
+    execution_timeout = config.get('execution_timeout', 10)
+
     # Run scripts
     ran = {}
     for s in scripts:
-
         proc = Popen(
-            [s, tmpfile, event],
+            [s, tmpfile, event], env={'PATH': getenv('PATH')},
             stdout=PIPE, stderr=PIPE
         )
-        stdout, stderr = proc.communicate()
+        try:
+            stdout, stderr = proc.communicate(timeout=execution_timeout)
 
-        ran[basename(s)] = {
-            'returncode': proc.returncode,
-            'stdout': stdout,
-            'stderr': stderr,
-        }
+            ran[basename(s)] = {
+                'returncode': proc.returncode,
+                'stdout': stdout.decode('utf-8'),
+                'stderr': stderr.decode('utf-8'),
+            }
 
-        # Log errors if a hook failed
-        if proc.returncode != 0:
-            app.logger.error('{} : {} \n{}'.format(
-                s, proc.returncode, stderr
-            ))
-
+            # Log errors if a hook failed
+            if proc.returncode != 0:
+                app.logger.error('{} : {} \n{}'.format(
+                    s, proc.returncode, stderr
+                ))
+        except TimeoutExpired:
+            ran[basename(s)] = {
+                'returncode': None,
+                'stdout': "Script took to long to finish. Will finish in background.",
+                'stderr': None,
+            }
     # Remove temporal file
     remove(tmpfile)
 
