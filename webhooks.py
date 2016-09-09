@@ -28,7 +28,7 @@ from os.path import isfile, abspath, normpath, dirname, join, basename
 
 import requests
 from ipaddress import ip_address, ip_network
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
 
 
 app = Flask(__name__)
@@ -97,8 +97,9 @@ def index():
 
     # Gather data
     try:
-        payload = loads(request.data)
+        payload = request.get_json()
     except:
+        app.logger.error("Loading payload failed.")
         abort(400)
 
     # Determining the branch is tricky, as it only appears for certain event
@@ -197,7 +198,7 @@ def index():
     if not info:
         return ''
 
-    output = dumps(ran, sort_keys=True, indent=4)
+    output = jsonify(ran)
     app.logger.info(output)
     return output
 
